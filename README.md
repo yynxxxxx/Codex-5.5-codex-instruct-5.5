@@ -19,9 +19,20 @@ Codex-X 提供桌面 UI、Provider 切换、TOML / Auth 可视化编辑、会话
 - QQ AI 技术交流群：扫码加入
 - TG 交流群：[@Geminivip1](https://t.me/Geminivip1)
 
-<p align="center">
-  <img width="360" alt="QQ AI 技术交流群二维码" src="https://cdn.jsdelivr.net/gh/yynxxxxx/Codex-5.5-codex-instruct-5.5@main/assets/ai-tech-group-480.png" />
-</p>
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <b>QQ AI 技术交流群 1</b><br />
+        <img alt="QQ AI 技术交流群 1 二维码" src="https://cdn.jsdelivr.net/gh/yynxxxxx/Codex-5.5-codex-instruct-5.5@main/assets/ai-tech-group-480.png" />
+      </td>
+      <td align="center">
+        <b>QQ AI 技术交流群 2</b><br />
+        <img alt="QQ AI 技术交流群 2 二维码" src="https://cdn.jsdelivr.net/gh/yynxxxxx/Codex-5.5-codex-instruct-5.5@main/assets/ai-tech-group-2.png" />
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## 这是什么 / What
 
