@@ -116,7 +116,7 @@ MIT
 ## Star History
 
 <p align="center">
-  <a href="https://star-history.com/#yynxxxxx/Codex-5.5-codex-instruct-5.5&Date">
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=yynxxxxx/Codex-5.5-codex-instruct-5.5&type=Date" />
+  <a href="https://www.star-history.com/?repos=yynxxxxx%2FCodex-5.5-codex-instruct-5.5&type=date&legend=top-left">
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=yynxxxxx%2FCodex-5.5-codex-instruct-5.5&amp;type=date&amp;legend=top-left&amp;v=20260709" width="900" />
   </a>
 </p>
