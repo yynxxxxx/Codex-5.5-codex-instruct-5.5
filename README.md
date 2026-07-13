@@ -116,7 +116,11 @@ MIT
 ## Star History
 
 <p align="center">
-  <a href="https://www.star-history.com/?repos=yynxxxxx%2FCodex-5.5-codex-instruct-5.5&type=date&legend=top-left">
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=yynxxxxx%2FCodex-5.5-codex-instruct-5.5&amp;type=date&amp;legend=top-left&amp;v=20260709" width="900" />
+  <a href="https://github.com/yynxxxxx/Codex-5.5-codex-instruct-5.5/stargazers">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-5-5.svg?theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-5-5.svg?theme=light" />
+      <img alt="Codex-5.5-codex-instruct-5.5 Star History" src="https://codex-star-history.zhihack0728.workers.dev/v1/charts/codex-5-5.svg?theme=light" width="900" />
+    </picture>
   </a>
 </p>
