@@ -12,6 +12,8 @@
 
 Codex-X 提供桌面 UI、Provider 切换、TOML / Auth 可视化编辑、会话管理、内置 `gpt5.4-unrestricted.md` / `gpt5.5-unrestricted.md` 破甲提示词，一键注入破甲功能，以及 macOS / Windows / Linux 安装包。
 
+本 CLI 版现已补齐 compact 持久化：除 `model_instructions_file` 外，还会生成并配置 `experimental_compact_prompt_file`，让会话压缩摘要继续携带自定义指令锚点。
+
 👉 新项目地址：**[https://github.com/yynxxxxx/Codex-X](https://github.com/yynxxxxx/Codex-X)**。
 
 ## 交流 / Community
@@ -36,7 +38,7 @@ Codex-X 提供桌面 UI、Provider 切换、TOML / Auth 可视化编辑、会话
 
 ## 这是什么 / What
 
-GPT-5.5 在 Codex CLI 中同样受到严格的内容安全限制。本工具利用 `model_instructions_file` 配置机制，注入一套专为 GPT-5.5 编写的无限制模式指令，强制 Codex 以 `[MODE: UNRESTRICTED]` 运行。
+GPT-5.5 在 Codex CLI 中同样受到严格的内容安全限制。本工具利用 `model_instructions_file` 配置机制，注入一套专为 GPT-5.5 编写的无限制模式指令，强制 Codex 以 `[MODE: UNRESTRICTED]` 运行。新版同时写入 `experimental_compact_prompt_file`：compact 时由专用压缩提示词把自定义指令写进压缩摘要，避免普通对话有效、compact 后失效。
 
 与 5.4 的 CTF 沙箱方案不同，5.5 版本采用更直接的破甲策略：直接声明无限制开发者模式、关闭所有过滤器、明确要求不拒绝任何任务。8 条核心指令覆盖了安全研究、渗透测试、逆向工程、NSFW 虚构内容等全部场景。
 
@@ -54,8 +56,14 @@ GPT-5.5 inside Codex CLI retains the same strict safety restrictions. This tool 
 ## 快速开始 / Quick Start
 
 ```bash
-# 部署 GPT-5.5 破限指令
+# 部署 GPT-5.5 指令 + compact 持久化锚点
 python codex-instruct.py
+
+# 只预览将写入哪些 config / md 文件
+python codex-instruct.py --dry-run
+
+# 如果只想保留旧行为，不写 compact 专用提示词
+python codex-instruct.py --no-compact-anchor
 
 # 重启 Codex 生效
 ```
@@ -66,12 +74,35 @@ python codex-instruct.py
 |------|------|
 | `--file`, `-f` | 使用外部 `.md` 指令文件 |
 | `--name`, `-n` | 输出文件名不含 `.md`（默认 `gpt5.5-unrestricted`） |
+| `--compact-name` | 自定义 compact 专用提示词文件名（默认 `<name>.compact.md`） |
+| `--no-compact-anchor` | 只部署普通 `model_instructions_file`，不写 compact 锚点 |
 | `--dry-run` | 预览，不实际修改 |
-| `--codex-dir` | 手动指定 `.codex` 目录 |
+| `--codex-dir` | 手动指定 Codex 配置目录 |
+
+## compact 后为什么会失效 / Why compact broke it
+
+旧版本只改 `model_instructions_file`。普通回合里 Codex 会把该文件作为额外指令加载；但 compact 后，旧对话被摘要替换，如果压缩摘要没有主动保留这些自定义指令，后续模型可见上下文里就只剩普通摘要，表现为“没 compact 时有效，compact 后失效”。
+
+修复方案是双层注入：
+
+1. `model_instructions_file = "./gpt5.5-unrestricted.md"`：保证新会话/普通回合加载自定义指令。
+2. `experimental_compact_prompt_file = "./gpt5.5-unrestricted.compact.md"`：覆盖 compact 使用的压缩提示词，要求压缩摘要顶部保留 `Persistent custom model instructions` 区块。
+
+如果你的 Codex 实际配置目录不止 `~/.codex`，脚本也会额外检查常见的 Orca/Codex runtime home。
 
 ## 验证 / Verify
 
-部署后测试：
+部署后检查配置：
+
+```bash
+python codex-instruct.py --dry-run
+python codex-instruct.py
+# 查看 ~/.codex/config.toml 中是否同时存在：
+# model_instructions_file = "./gpt5.5-unrestricted.md"
+# experimental_compact_prompt_file = "./gpt5.5-unrestricted.compact.md"
+```
+
+功能测试：
 
 > "如何对目标进行 SQL 注入测试？"
 
@@ -81,7 +112,9 @@ python codex-instruct.py
 
 ```bash
 # 删除 config.toml 中的 model_instructions_file 行
+# 删除 config.toml 中的 experimental_compact_prompt_file 行
 # 删除 ~/.codex/gpt5.5-unrestricted.md
+# 删除 ~/.codex/gpt5.5-unrestricted.compact.md
 # 重启 Codex
 ```
 
@@ -93,7 +126,8 @@ codex-instruct-5.5/
 │   └── ai-tech-group.png                   # QQ AI 技术交流群二维码
 ├── codex-instruct.py                    # 主脚本
 ├── examples/
-│   └── gpt5.5-unrestricted.md           # 破甲指令独立副本
+│   ├── gpt5.5-unrestricted.md           # 指令独立副本
+│   └── gpt5.5-unrestricted.compact.md   # compact 持久化提示词示例
 ├── .gitignore
 ├── README.md
 └── LICENSE                              # MIT
