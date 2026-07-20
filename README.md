@@ -95,6 +95,14 @@ python codex-instruct.py --no-developer-inline
 
 如果你的 Codex 实际配置目录不止 `~/.codex`，脚本也会额外检查常见的 Orca/Codex runtime home。
 
+### 源码依据 / Source notes
+
+- Codex 配置里 `developer_instructions` 是独立字段，会作为 separate developer message 注入；`model_instructions_file` 则会被读取成 base instructions。
+- `experimental_compact_prompt_file` 会被解析成 `compact_prompt`，但它只影响使用本地 summarization prompt 的 compact 路径。
+- OpenAI/ChatGPT provider 支持 remote compaction 时，manual/auto compact 会走 `/responses/compact` 远程路径，源码会过滤 remote 输出中的旧 `developer` messages，再由下一轮重新注入当前 session 的 developer instructions。
+- 因此要解决“compact 后像换了实例”，不能只改 compact prompt；必须把自定义指令放进 `developer_instructions`，让 compact 后的后续请求重新获得 developer-level 指令。
+
+
 ## 验证 / Verify
 
 部署后检查配置：
