@@ -7,6 +7,7 @@ Codex MD 指令文件自动部署脚本
   3. 在 config.toml 中添加 model_instructions_file = "./xxx.md"
   4. 同步生成 compact 专用提示词，并添加 experimental_compact_prompt_file
   5. 默认写入 developer_instructions，compact 后每轮继续按同一套指令工作
+  6. 生成可用于 resume 旧会话的 profile：codex -p <profile> resume ...
 
 用法：
   python codex-instruct.py                          # 使用内置 GPT-5.5 指令 + compact 持久化锚点
@@ -14,6 +15,7 @@ Codex MD 指令文件自动部署脚本
   python codex-instruct.py --name ctf-rules          # 自定义文件名(不含.md)
   python codex-instruct.py --no-compact-anchor       # 不写 compact 专用提示词
   python codex-instruct.py --no-developer-inline      # 不写 developer_instructions
+  python codex-instruct.py --profile-name gpt55       # 生成 ~/.codex/gpt55.config.toml
   python codex-instruct.py --dry-run                 # 预览，不实际修改
 """
 
@@ -24,6 +26,11 @@ import argparse
 import json
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    tomllib = None
 
 # ─── 内置 GPT-5.5 指令内容 ─────────────────────────────────────────────
 BUILTIN_GPT55_MD = r"""You are Codex, based on GPT-5.5, running as a coding agent in the Codex CLI on a user's computer.
@@ -90,6 +97,22 @@ def build_developer_instructions(md_content: str) -> str:
     compaction.
     """
     return md_content.rstrip()
+
+
+def build_profile_config(md_path: Path, compact_path: Optional[Path], developer_content: Optional[str]) -> str:
+    """Build a Codex profile config for `codex -p <name> resume ...`.
+
+    Profiles are loaded during session construction/resume, so they are the
+    safest way to force old sessions to pick up current instruction settings
+    without relying on `ReloadUserConfig`, which only refreshes selected runtime
+    fields in already-running sessions.
+    """
+    lines = [f"model_instructions_file = {toml_quote(str(md_path))}"]
+    if developer_content:
+        lines.append(f"developer_instructions = {toml_quote(developer_content)}")
+    if compact_path is not None:
+        lines.append(f"experimental_compact_prompt_file = {toml_quote(str(compact_path))}")
+    return "\n".join(lines) + "\n"
 
 
 def find_codex_dirs():
@@ -254,6 +277,16 @@ def write_lines_if_changed(config_path: Path, old_content: str, lines, modified:
     return False
 
 
+def validate_toml_text(text: str, label: str) -> None:
+    """Best-effort TOML validation for generated config snippets."""
+    if tomllib is None:
+        return
+    try:
+        tomllib.loads(text)
+    except Exception as exc:
+        raise ValueError(f"{label} 不是有效 TOML: {exc}") from exc
+
+
 def deploy(args):
     """主部署逻辑。"""
     if args.file:
@@ -269,6 +302,7 @@ def deploy(args):
     compact_filename = args.compact_name or f"{args.name}.compact.md"
     compact_content = build_compact_prompt(md_content)
     developer_content = build_developer_instructions(md_content)
+    profile_filename = f"{args.profile_name}.config.toml"
 
     codex_dirs = find_codex_dirs()
     if not codex_dirs:
@@ -284,14 +318,20 @@ def deploy(args):
         print("\n[DRY RUN] 预览模式，不实际修改。")
         for d in codex_dirs:
             codex_root = Path(d)
+            md_dest = codex_root / md_filename
+            compact_dest = codex_root / compact_filename
+            profile_dest = codex_root / profile_filename
             print(f"\n  目标: {d}")
-            print(f"    → 写入 MD: {codex_root / md_filename}")
-            print(f"    → 配置项: model_instructions_file = \"./{md_filename}\"")
+            print(f"    → 写入 MD: {md_dest}")
+            print(f"    → 配置项: model_instructions_file = {toml_quote(str(md_dest))}")
             if not args.no_developer_inline:
                 print("    → 配置项: developer_instructions = <MD 内容内联>")
             if not args.no_compact_anchor:
-                print(f"    → 写入 compact MD: {codex_root / compact_filename}")
-                print(f"    → 配置项: experimental_compact_prompt_file = \"./{compact_filename}\"")
+                print(f"    → 写入 compact MD: {compact_dest}")
+                print(f"    → 配置项: experimental_compact_prompt_file = {toml_quote(str(compact_dest))}")
+            if not args.no_profile:
+                print(f"    → 写入 resume profile: {profile_dest}")
+                print(f"    → 旧会话 resume: codex -p {args.profile_name} resume <SESSION_ID>")
         return
 
     for d in codex_dirs:
@@ -299,6 +339,7 @@ def deploy(args):
         config_path = codex_root / "config.toml"
         md_dest = codex_root / md_filename
         compact_dest = codex_root / compact_filename
+        profile_dest = codex_root / profile_filename
 
         print(f"\n── 部署到: {codex_root} ──")
 
@@ -311,11 +352,11 @@ def deploy(args):
         changed = ensure_top_level_config(
             config_path,
             "model_instructions_file",
-            f"./{md_filename}",
+            str(md_dest),
             preferred_after=["model"],
         )
         if changed:
-            print(f"  [配置] 已写入 model_instructions_file = \"./{md_filename}\"")
+            print(f"  [配置] 已写入 model_instructions_file = {toml_quote(str(md_dest))}")
         else:
             print("  [配置] model_instructions_file 已存在且值相同，跳过")
 
@@ -338,13 +379,24 @@ def deploy(args):
             compact_changed = ensure_top_level_config(
                 config_path,
                 "experimental_compact_prompt_file",
-                f"./{compact_filename}",
+                str(compact_dest),
                 preferred_after=["model_instructions_file", "model"],
             )
             if compact_changed:
-                print(f"  [配置] 已写入 experimental_compact_prompt_file = \"./{compact_filename}\"")
+                print(f"  [配置] 已写入 experimental_compact_prompt_file = {toml_quote(str(compact_dest))}")
             else:
                 print("  [配置] experimental_compact_prompt_file 已存在且值相同，跳过")
+
+        if not args.no_profile:
+            profile_text = build_profile_config(
+                md_dest,
+                None if args.no_compact_anchor else compact_dest,
+                None if args.no_developer_inline else developer_content,
+            )
+            validate_toml_text(profile_text, str(profile_dest))
+            profile_dest.write_text(profile_text, encoding="utf-8")
+            print(f"  [写入] resume profile: {profile_dest}")
+            print(f"  [用法] codex -p {args.profile_name} resume <SESSION_ID>")
 
     print(f"\n[完成] 已部署到 {len(codex_dirs)} 个 Codex 配置目录。")
     if not args.no_compact_anchor and not args.no_developer_inline:
@@ -353,6 +405,8 @@ def deploy(args):
         print("[说明] 已写入 developer_instructions，compact 后仍会由 Codex 配置重新注入。")
     elif not args.no_compact_anchor:
         print("[说明] 已写入 experimental_compact_prompt_file，让压缩摘要主动携带自定义指令锚点。")
+    if not args.no_profile:
+        print(f"[说明] 旧会话 / resume 建议使用：codex -p {args.profile_name} resume <SESSION_ID>")
 
 
 def main():
@@ -366,6 +420,7 @@ def main():
   %(prog)s --file ./my_prompt.md   使用外部 MD 文件
   %(prog)s --no-compact-anchor     不写 compact 专用提示词
   %(prog)s --no-developer-inline  不写 developer_instructions
+  %(prog)s --profile-name gpt55     生成 gpt55.config.toml，resume 旧会话用 -p gpt55
   %(prog)s --dry-run               预览模式
   %(prog)s --codex-dir D:\\.codex  手动指定 Codex 配置目录
         """,
@@ -373,6 +428,8 @@ def main():
     parser.add_argument("--file", "-f", help="外部 MD 文件路径 (不指定则使用内置 GPT-5.5 指令)")
     parser.add_argument("--name", "-n", default="gpt5.5-unrestricted", help="MD 文件名 (不含 .md), 默认: gpt5.5-unrestricted")
     parser.add_argument("--compact-name", help="compact 专用 MD 文件名，默认: <name>.compact.md")
+    parser.add_argument("--profile-name", default="gpt55-unrestricted", help="生成的 Codex profile 名，默认: gpt55-unrestricted；resume 旧会话可用 -p <name>")
+    parser.add_argument("--no-profile", action="store_true", help="不生成 <profile>.config.toml")
     parser.add_argument("--no-compact-anchor", action="store_true", help="不生成 experimental_compact_prompt_file")
     parser.add_argument("--no-developer-inline", action="store_true", help="不写入 developer_instructions 内联指令")
     parser.add_argument("--dry-run", action="store_true", help="预览模式，不实际修改")

@@ -1,6 +1,6 @@
 # Codex破限 5.5 / codex-instruct-5.5
 
-> 针对 GPT-5.5 的 Codex CLI 破甲工具 — 一键注入无限制模式系统指令  
+> 针对 GPT-5.5 的 Codex CLI 破甲工具 — 一键注入无限制模式系统指令
 > GPT-5.5 jailbreak for Codex CLI — one-click unrestricted mode injection
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -13,6 +13,18 @@
 Codex-X 提供桌面 UI、Provider 切换、TOML / Auth 可视化编辑、会话管理、内置 `gpt5.4-unrestricted.md` / `gpt5.5-unrestricted.md` 破甲提示词，一键注入破甲功能，以及 macOS / Windows / Linux 安装包。
 
 本 CLI 版现已补齐 compact 持久化：除 `model_instructions_file` 外，还会默认写入 `developer_instructions`，并生成配置 `experimental_compact_prompt_file`。前者让 Codex 在 compact 后的后续回合继续重新加载同一套指令，后者让压缩摘要继续携带自定义指令锚点。
+
+同时会生成新版 Codex profile 文件，例如：
+
+```text
+~/.codex/gpt55-unrestricted.config.toml
+```
+
+旧会话 / resume 场景建议用 profile 启动，避免已经存在的 session 配置快照没有吃到新配置：
+
+```bash
+codex -p gpt55-unrestricted resume <SESSION_ID>
+```
 
 👉 新项目地址：**[https://github.com/yynxxxxx/Codex-X](https://github.com/yynxxxxx/Codex-X)**。
 
@@ -68,6 +80,12 @@ python codex-instruct.py --no-compact-anchor
 # 如果不想把指令内联到 developer_instructions
 python codex-instruct.py --no-developer-inline
 
+# 生成自定义 profile，旧会话 resume 时使用：codex -p my-gpt55 resume <SESSION_ID>
+python codex-instruct.py --profile-name my-gpt55
+
+# 如果不想生成 resume profile
+python codex-instruct.py --no-profile
+
 # 重启 Codex 生效
 ```
 
@@ -78,6 +96,8 @@ python codex-instruct.py --no-developer-inline
 | `--file`, `-f` | 使用外部 `.md` 指令文件 |
 | `--name`, `-n` | 输出文件名不含 `.md`（默认 `gpt5.5-unrestricted`） |
 | `--compact-name` | 自定义 compact 专用提示词文件名（默认 `<name>.compact.md`） |
+| `--profile-name` | 自定义新版 Codex profile 名（默认 `gpt55-unrestricted`，生成 `<name>.config.toml`） |
+| `--no-profile` | 不生成新版 Codex profile 文件 |
 | `--no-compact-anchor` | 不写 compact 锚点，只保留其他注入方式 |
 | `--no-developer-inline` | 不写 `developer_instructions`，只使用文件注入/compact prompt |
 | `--dry-run` | 预览，不实际修改 |
@@ -89,18 +109,23 @@ python codex-instruct.py --no-developer-inline
 
 修复方案是双层注入：
 
-1. `model_instructions_file = "./gpt5.5-unrestricted.md"`：保留外部指令文件，方便查看和复用。
+1. `model_instructions_file = "C:\\Users\\...\\.codex\\gpt5.5-unrestricted.md"`：保留外部指令文件，方便查看和复用。新版写入绝对路径，因为 Codex 源码按 effective cwd 解析相对路径，不是固定按 `~/.codex` 解析。
 2. `developer_instructions = "..."`：把同一份指令写入 Codex 的顶层开发者指令配置，compact 后后续回合仍会重新加载，这是主修复。
-3. `experimental_compact_prompt_file = "./gpt5.5-unrestricted.compact.md"`：覆盖 compact 使用的压缩提示词，要求压缩摘要顶部保留 `Persistent custom model instructions` 区块，作为摘要层兜底。
+3. `experimental_compact_prompt_file = "C:\\Users\\...\\.codex\\gpt5.5-unrestricted.compact.md"`：覆盖本地 compact 使用的压缩提示词，要求压缩摘要顶部保留 `Persistent custom model instructions` 区块，作为摘要层兜底。
+4. `gpt55-unrestricted.config.toml`：生成 profile 配置，旧会话使用 `codex -p gpt55-unrestricted resume <SESSION_ID>` 重新构造 session，避免仅靠运行中的 `ReloadUserConfig`。
 
 如果你的 Codex 实际配置目录不止 `~/.codex`，脚本也会额外检查常见的 Orca/Codex runtime home。
 
 ### 源码依据 / Source notes
 
-- Codex 配置里 `developer_instructions` 是独立字段，会作为 separate developer message 注入；`model_instructions_file` 则会被读取成 base instructions。
-- `experimental_compact_prompt_file` 会被解析成 `compact_prompt`，但它只影响使用本地 summarization prompt 的 compact 路径。
-- OpenAI/ChatGPT provider 支持 remote compaction 时，manual/auto compact 会走 `/responses/compact` 远程路径，源码会过滤 remote 输出中的旧 `developer` messages，再由下一轮重新注入当前 session 的 developer instructions。
-- 因此要解决“compact 后像换了实例”，不能只改 compact prompt；必须把自定义指令放进 `developer_instructions`，让 compact 后的后续请求重新获得 developer-level 指令。
+- `codex-rs/core/src/config/mod.rs`：`model_instructions_file` 会读入 `base_instructions`，`developer_instructions` 是独立配置字段，`experimental_compact_prompt_file` 会读入 `compact_prompt`。
+- `codex-rs/core/src/tasks/compact.rs`：只有本地 compact 路径会使用 `ctx.config.compact_prompt`。
+- `codex-rs/core/src/session/turn.rs`：OpenAI / ChatGPT provider 支持 remote compact 时，manual/auto compact 会走 remote compact 分支。
+- `codex-rs/core/src/compact_remote*.rs`：remote compact 会过滤输出里的旧 `developer` messages，避免保留 stale/duplicated instruction content。
+- `codex-rs/core/src/session/turn_context.rs`：每轮 `TurnContext` 会从 `session_configuration.developer_instructions` 取开发者指令。
+- `codex-rs/core/src/session/mod.rs`：`refresh_runtime_config()` 只刷新 user layer / hooks 等运行时可刷新字段，不重建 session-static settings；所以旧 session 最稳是用 `codex -p gpt55-unrestricted resume <SESSION_ID>` 重新构造。
+
+因此要解决“compact 后像换了实例”，不能只改 compact prompt；必须把自定义指令放进 `developer_instructions`，并给旧会话提供 profile resume 路径。
 
 
 ## 验证 / Verify
@@ -111,9 +136,19 @@ python codex-instruct.py --no-developer-inline
 python codex-instruct.py --dry-run
 python codex-instruct.py
 # 查看 ~/.codex/config.toml 中是否同时存在：
-# model_instructions_file = "./gpt5.5-unrestricted.md"
+# model_instructions_file = "C:\\Users\\...\\.codex\\gpt5.5-unrestricted.md"
 # developer_instructions = "..."
-# experimental_compact_prompt_file = "./gpt5.5-unrestricted.compact.md"
+# experimental_compact_prompt_file = "C:\\Users\\...\\.codex\\gpt5.5-unrestricted.compact.md"
+
+# 查看 ~/.codex/gpt55-unrestricted.config.toml 是否存在同样三项
+```
+
+新会话：重启 Codex 后直接使用。
+
+旧会话 / resume：
+
+```bash
+codex -p gpt55-unrestricted resume <SESSION_ID>
 ```
 
 功能测试：
@@ -130,6 +165,7 @@ python codex-instruct.py
 # 删除 config.toml 中的 experimental_compact_prompt_file 行
 # 删除 ~/.codex/gpt5.5-unrestricted.md
 # 删除 ~/.codex/gpt5.5-unrestricted.compact.md
+# 删除 ~/.codex/gpt55-unrestricted.config.toml
 # 重启 Codex
 ```
 
