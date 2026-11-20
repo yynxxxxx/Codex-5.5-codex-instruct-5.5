@@ -17,7 +17,6 @@ Codex-X 提供桌面 UI、Provider 切换、TOML / Auth 可视化编辑、会话
 ## 交流 / Community
 
 - QQ AI 技术交流群：扫码加入
-- TG 交流群：[@Geminivip1](https://t.me/Geminivip1)
 
 <div align="center">
   <table>
